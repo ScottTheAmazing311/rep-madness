@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rep Madness — Rankings.io</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #07374F;
+            --navy-light: #0e5f87;
+            --yellow: #eaff6a;
+            --yellow-warm: #eedc82;
+            --cream: #fefaed;
+            --bg: #f4f0e6;
+            --sky: #3c94d1;
+            --orange: #ff6b35;
+            --text: #2c2c2c;
+            --text-muted: #6b6b6b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stripe { height: 5px; background: var(--yellow-warm); }
+
+        /* ── Header ── */
+        .header {
+            background: var(--navy);
+            padding: 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .back-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--yellow-warm);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: color 0.2s;
+        }
+
+        .back-btn:hover { color: var(--yellow); }
+
+        .header-sep {
+            width: 1px;
+            height: 28px;
+            background: rgba(255,255,255,0.15);
+        }
+
+        .header-content .kicker {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--yellow-warm);
+        }
+
+        .header-content h1 {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 50%, #1a6fa0 100%);
+            padding: 4rem 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 40px,
+                rgba(234,255,106,0.03) 40px,
+                rgba(234,255,106,0.03) 80px
+            );
+        }
+
+        .hero-badge {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--navy);
+            background: var(--yellow);
+            padding: 4px 14px;
+            border-radius: 4px;
+            margin-bottom: 1.25rem;
+            position: relative;
+        }
+
+        .hero-title {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 4.5rem;
+            font-weight: 800;
+            color: #fff;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+            position: relative;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+        }
+
+        .hero-title .accent {
+            color: var(--yellow);
+        }
+
+        .hero-subtitle {
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-size: 1.15rem;
+            color: rgba(255,255,255,0.7);
+            position: relative;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        /* ── Main ── */
+        .main {
+            flex: 1;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 3rem 2rem 4rem;
+            text-align: center;
+        }
+
+        .coming-soon-card {
+            background: var(--cream);
+            border-radius: 12px;
+            border-top: 3px solid var(--orange);
+            padding: 3rem 2rem;
+            box-shadow: 0 2px 12px rgba(7,55,79,0.06);
+        }
+
+        .coming-soon-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--navy), var(--navy-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+        }
+
+        .coming-soon-icon svg {
+            width: 32px;
+            height: 32px;
+            fill: var(--yellow);
+        }
+
+        .coming-soon-title {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 0.5rem;
+        }
+
+        .coming-soon-desc {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            max-width: 420px;
+            margin: 0 auto 2rem;
+            line-height: 1.6;
+        }
+
+        .feature-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            justify-content: center;
+        }
+
+        .feature-tag {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--navy);
+            background: rgba(7,55,79,0.06);
+            padding: 6px 14px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            background: var(--cream);
+            border-top: 1px solid rgba(7,55,79,0.08);
+            padding: 1.5rem 2rem;
+            text-align: center;
+        }
+
+        .footer-text {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+
+        @media (max-width: 600px) {
+            .hero { padding: 3rem 1.25rem; }
+            .hero-title { font-size: 3rem; }
+            .main { padding: 2rem 1.25rem 3rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="stripe"></div>
+
+<header class="header">
+    <a href="https://scotttheamazing311.github.io/sales-hub/" class="back-btn">← Sales Hub</a>
+    <div class="header-sep"></div>
+    <div class="header-content">
+        <div class="kicker">Sales Games</div>
+        <h1>Rep Madness</h1>
+    </div>
+</header>
+
+<div class="hero">
+    <div class="hero-badge">March 2026</div>
+    <h2 class="hero-title">Rep <span class="accent">Madness</span></h2>
+    <p class="hero-subtitle">Head-to-head sales bracket tournament — March Madness style.</p>
+</div>
+
+<main class="main">
+    <div class="coming-soon-card">
+        <div class="coming-soon-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        </div>
+        <h3 class="coming-soon-title">Tournament Coming Soon</h3>
+        <p class="coming-soon-desc">The bracket is being built. Get ready for head-to-head matchups, live standings, and bragging rights that last all year.</p>
+        <div class="feature-list">
+            <span class="feature-tag">Bracket System</span>
+            <span class="feature-tag">Live Scores</span>
+            <span class="feature-tag">Leaderboard</span>
+            <span class="feature-tag">Head-to-Head</span>
+        </div>
+    </div>
+</main>
+
+<footer class="footer">
+    <div class="footer-text">Rankings.io Sales Hub — Internal Use Only</div>
+</footer>
+
+</body>
+</html>
