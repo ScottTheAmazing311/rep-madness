@@ -147,6 +147,25 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
 .lb-entries{font-family:var(--sub);font-size:.75rem;color:var(--dim)}
 .lb-score{font-family:var(--head);font-size:1.2rem;color:var(--lime)}
 
+/* ─── BRACKET VIEWER ─── */
+#view-panel{display:none;position:fixed;inset:0;z-index:500;background:rgba(6,6,14,.92);align-items:center;justify-content:center;padding:1rem}
+#view-panel.open{display:flex}
+.view-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:2rem;width:min(650px,95vw);max-height:85vh;overflow-y:auto}
+.view-box h2{font-family:var(--head);font-size:1.8rem;letter-spacing:.1em;color:var(--cyan);margin-bottom:1rem}
+.view-card{display:flex;align-items:center;gap:.75rem;padding:.7rem .75rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.5rem;cursor:pointer;transition:all .15s;background:var(--surface2)}
+.view-card:hover{border-color:var(--cyan);background:rgba(0,212,255,.06);transform:translateX(3px)}
+.view-card img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid var(--border)}
+.view-card .vc-name{font-family:var(--sub);font-size:.95rem;font-weight:700;flex:1}
+.view-card .vc-entry{font-family:var(--sub);font-size:.75rem;color:var(--dim);letter-spacing:.05em}
+.view-card .vc-champ{font-family:var(--sub);font-size:.8rem;color:var(--gold);letter-spacing:.03em}
+.view-card .vc-picks{font-family:var(--sub);font-size:.7rem;color:var(--dim2)}
+.view-empty{font-family:var(--sub);font-size:.9rem;color:var(--dim);text-align:center;padding:2rem 0}
+.view-bar{display:flex;align-items:center;justify-content:center;gap:1rem;padding:.5rem 1rem;background:rgba(0,212,255,.06);border-bottom:1px solid var(--cyan);flex-shrink:0}
+.view-bar .vb-label{font-family:var(--sub);font-size:.85rem;color:var(--cyan);letter-spacing:.05em}
+.view-bar .vb-name{font-family:var(--head);font-size:1rem;color:var(--text);letter-spacing:.08em}
+.view-bar button{background:none;border:1px solid var(--border);border-radius:4px;padding:.25rem .7rem;font-family:var(--sub);font-size:.75rem;letter-spacing:.1em;color:var(--dim);cursor:pointer}
+.view-bar button:hover{border-color:var(--cyan);color:var(--cyan)}
+
 /* ─── SCROLLBAR ─── */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -190,10 +209,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
         <span class="num" id="entry-count">0</span>
         <span class="lbl">Entries</span>
       </div>
+      <button class="topbar-btn" onclick="openViewer()">View Brackets</button>
       <button class="topbar-btn" onclick="openLeaderboard()">Leaderboard</button>
       <button class="topbar-btn" id="admin-toggle" style="display:none" onclick="openAdmin()">Admin</button>
       <button class="topbar-btn" onclick="logout()">Logout</button>
     </div>
+  </div>
+
+  <!-- View mode bar (shown when viewing another bracket) -->
+  <div class="view-bar" id="view-bar" style="display:none">
+    <span class="vb-label">VIEWING:</span>
+    <span class="vb-name" id="view-bar-name"></span>
+    <button onclick="exitViewMode()">BACK TO MY BRACKET</button>
   </div>
 
   <!-- Entry selector -->
@@ -240,6 +267,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--b
       <pre style="background:#000;border-radius:4px;padding:.75rem;font-size:.7rem;color:#88ff88;white-space:pre-wrap;max-height:200px;overflow-y:auto" id="setup-sql"></pre>
     </div>
     <button class="admin-close" onclick="closeAdmin()">Close</button>
+  </div>
+</div>
+
+<!-- ═══════ BRACKET VIEWER ═══════ -->
+<div id="view-panel">
+  <div class="view-box">
+    <h2>SUBMITTED BRACKETS</h2>
+    <div id="view-list"></div>
+    <button class="admin-close" style="margin-top:1rem" onclick="closeViewer()">Close</button>
   </div>
 </div>
 
@@ -372,6 +408,7 @@ let currentBracket = null;
 let allPlayerData = [];  // for admin/leaderboard
 let allBracketsAll = []; // all brackets for all players
 let dbOk = false;        // whether Supabase tables exist
+let viewingBracket = null; // read-only bracket being viewed
 
 /* ════════════════════════════════════════
    LOCAL STORAGE HELPERS
@@ -688,6 +725,8 @@ function getGameId(region, round, game) {
   return `${region}-r${round}-g${game}`;
 }
 
+function activeBracket() { return viewingBracket || currentBracket; }
+
 function getTeamForSlot(region, round, game, slot) {
   // slot: 0=top, 1=bottom
   if (round === 1) {
@@ -698,7 +737,7 @@ function getTeamForSlot(region, round, game, slot) {
   // Later rounds: team comes from pick in previous round
   const prevGame = game * 2 + slot;
   const prevId = getGameId(region, round - 1, prevGame);
-  const picks = currentBracket?.picks || {};
+  const picks = activeBracket()?.picks || {};
   if (picks[prevId]) return picks[prevId]; // { seed, name }
   return null;
 }
@@ -706,7 +745,7 @@ function getTeamForSlot(region, round, game, slot) {
 function getFFTeam(ffRound, game, slot) {
   // ffRound 5: Final Four (2 games)
   // ffRound 6: Championship (1 game)
-  const picks = currentBracket?.picks || {};
+  const picks = activeBracket()?.picks || {};
   if (ffRound === 5) {
     // game 0: east winner vs west winner; game 1: south winner vs midwest winner
     const regionPairs = [['east','west'],['south','midwest']];
@@ -801,6 +840,7 @@ function renderBracket() {
 }
 
 function renderRegionBracket(wrap, region) {
+  const ab = activeBracket();
   const rounds = [
     { round:1, games:8, label:'ROUND OF 64' },
     { round:2, games:4, label:'ROUND OF 32' },
@@ -815,7 +855,7 @@ function renderRegionBracket(wrap, region) {
       const top = getTeamForSlot(region, round, g, 0);
       const bot = getTeamForSlot(region, round, g, 1);
       const gameId = getGameId(region, round, g);
-      const pick = currentBracket?.picks?.[gameId];
+      const pick = ab?.picks?.[gameId];
       html += renderMatchup(region, round, g, top, bot, pick);
     }
     html += `</div>`;
@@ -823,7 +863,7 @@ function renderRegionBracket(wrap, region) {
 
   // Region winner
   const eliteId = getGameId(region, 4, 0);
-  const winner = currentBracket?.picks?.[eliteId];
+  const winner = ab?.picks?.[eliteId];
   html += `<div class="round" style="justify-content:center">
     <div class="round-label">REGION WINNER</div>
     <div style="text-align:center;padding:1rem">
@@ -837,19 +877,20 @@ function renderRegionBracket(wrap, region) {
 }
 
 function renderMatchup(region, round, game, top, bot, pick) {
-  const isSubmitted = currentBracket?.submitted;
+  const ab = activeBracket();
+  const readOnly = !!viewingBracket || ab?.submitted;
   const topPicked = pick && top && pick.name === top.name;
   const botPicked = pick && bot && pick.name === bot.name;
 
   return `<div class="matchup">
     <div class="matchup-seed-pair">
       <div class="team-slot ${top ? (topPicked ? 'picked' : '') : 'empty'}"
-           onclick="${top && !isSubmitted ? `makePick('${region}',${round},${game},0)` : ''}">
+           onclick="${top && !readOnly ? `makePick('${region}',${round},${game},0)` : ''}">
         <span class="seed">${top ? top.seed : ''}</span>
         <span class="team-name">${top ? top.name : 'TBD'}</span>
       </div>
       <div class="team-slot ${bot ? (botPicked ? 'picked' : '') : 'empty'}"
-           onclick="${bot && !isSubmitted ? `makePick('${region}',${round},${game},1)` : ''}">
+           onclick="${bot && !readOnly ? `makePick('${region}',${round},${game},1)` : ''}">
         <span class="seed">${bot ? bot.seed : ''}</span>
         <span class="team-name">${bot ? bot.name : 'TBD'}</span>
       </div>
@@ -858,8 +899,9 @@ function renderMatchup(region, round, game, top, bot, pick) {
 }
 
 function renderFinalFour(wrap) {
-  const picks = currentBracket?.picks || {};
-  const isSubmitted = currentBracket?.submitted;
+  const ab = activeBracket();
+  const picks = ab?.picks || {};
+  const readOnly = !!viewingBracket || ab?.submitted;
 
   // Semifinal 1: East vs West
   const eastWinner = picks[getGameId('east',4,0)] || null;
@@ -881,12 +923,12 @@ function renderFinalFour(wrap) {
       <div class="ff-label">${label}</div>
       <div class="matchup-seed-pair">
         <div class="team-slot ${top ? (topPicked ? 'picked' : '') : 'empty'}"
-             onclick="${top && !isSubmitted ? `makePick('ff',${round},${game},0)` : ''}">
+             onclick="${top && !readOnly ? `makePick('ff',${round},${game},0)` : ''}">
           <span class="seed">${top ? top.seed : ''}</span>
           <span class="team-name">${top ? top.name : 'TBD'}</span>
         </div>
         <div class="team-slot ${bot ? (botPicked ? 'picked' : '') : 'empty'}"
-             onclick="${bot && !isSubmitted ? `makePick('ff',${round},${game},1)` : ''}">
+             onclick="${bot && !readOnly ? `makePick('ff',${round},${game},1)` : ''}">
           <span class="seed">${bot ? bot.seed : ''}</span>
           <span class="team-name">${bot ? bot.name : 'TBD'}</span>
         </div>
@@ -1022,6 +1064,65 @@ async function openLeaderboard() {
 }
 
 function closeLeaderboard() { document.getElementById('lb-panel').classList.remove('open'); }
+
+/* ════════════════════════════════════════
+   BRACKET VIEWER
+   ════════════════════════════════════════ */
+async function openViewer() {
+  await loadAllData();
+  const list = document.getElementById('view-list');
+  const submitted = allBracketsAll.filter(b => b.submitted);
+
+  if (submitted.length === 0) {
+    list.innerHTML = '<div class="view-empty">No submitted brackets yet</div>';
+    document.getElementById('view-panel').classList.add('open');
+    return;
+  }
+
+  // Sort by player name then entry number
+  submitted.sort((a, b) => a.player_name.localeCompare(b.player_name) || a.entry_number - b.entry_number);
+
+  list.innerHTML = '';
+  submitted.forEach((b, i) => {
+    const player = PLAYERS.find(p => p.name === b.player_name);
+    const img = player ? player.img : '';
+    const champ = b.picks?.['ff-r6-g0'];
+    const pickCount = Object.keys(b.picks || {}).length;
+    const div = document.createElement('div');
+    div.className = 'view-card';
+    div.innerHTML = `
+      <img src="${img}" alt="${b.player_name}" onerror="this.style.display='none'">
+      <span class="vc-name">${b.player_name}</span>
+      <span class="vc-entry">Entry #${b.entry_number}</span>
+      ${champ ? `<span class="vc-champ">${champ.name}</span>` : `<span class="vc-picks">${pickCount}/63</span>`}`;
+    div.onclick = () => viewBracket(b);
+    list.appendChild(div);
+  });
+
+  document.getElementById('view-panel').classList.add('open');
+}
+
+function closeViewer() { document.getElementById('view-panel').classList.remove('open'); }
+
+function viewBracket(bracket) {
+  closeViewer();
+  viewingBracket = bracket;
+  const player = PLAYERS.find(p => p.name === bracket.player_name);
+  const champ = bracket.picks?.['ff-r6-g0'];
+  document.getElementById('view-bar-name').textContent =
+    `${bracket.player_name} — Entry #${bracket.entry_number}${champ ? ' — Champ: ' + champ.name : ''}`;
+  document.getElementById('view-bar').style.display = 'flex';
+  document.getElementById('entry-bar').style.display = 'none';
+  renderBracket();
+}
+
+function exitViewMode() {
+  viewingBracket = null;
+  document.getElementById('view-bar').style.display = 'none';
+  document.getElementById('entry-bar').style.display = '';
+  renderBracket();
+  renderEntryBar();
+}
 
 /* ════════════════════════════════════════
    UTILS
