@@ -371,6 +371,27 @@ let allBrackets = [];    // all brackets for current player
 let currentBracket = null;
 let allPlayerData = [];  // for admin/leaderboard
 let allBracketsAll = []; // all brackets for all players
+let dbOk = false;        // whether Supabase tables exist
+
+/* ════════════════════════════════════════
+   LOCAL STORAGE HELPERS
+   ════════════════════════════════════════ */
+const LS_PREFIX = 'rm_';
+function lsGet(key) { try { return JSON.parse(localStorage.getItem(LS_PREFIX + key)); } catch { return null; } }
+function lsSet(key, val) { localStorage.setItem(LS_PREFIX + key, JSON.stringify(val)); }
+
+function lsGetPlayers() { return lsGet('players') || {}; }
+function lsSetPlayer(name, data) { const all = lsGetPlayers(); all[name] = data; lsSet('players', all); }
+function lsGetBrackets() { return lsGet('brackets') || []; }
+function lsSetBrackets(brackets) { lsSet('brackets', brackets); }
+
+async function checkDb() {
+  try {
+    const { error } = await sb.from('rm_players').select('id').limit(1);
+    if (error) { console.warn('DB not ready:', error.message); return false; }
+    return true;
+  } catch { return false; }
+}
 
 /* ════════════════════════════════════════
    GATE
@@ -432,6 +453,9 @@ async function enterApp() {
     <img src="${currentPlayer.img}" alt="${currentPlayer.name}">
     <span class="name">${currentPlayer.name}</span>`;
 
+  dbOk = await checkDb();
+  if (!dbOk && isAdmin) toast('DB tables not found — using local storage. Run setup SQL in Supabase.');
+
   await ensurePlayer();
   await loadPlayerBrackets();
   renderEntryBar();
@@ -453,43 +477,94 @@ function logout() {
    DATA LAYER
    ════════════════════════════════════════ */
 async function ensurePlayer() {
-  try {
-    const { data } = await sb.from('rm_players').select('*').eq('name', currentPlayer.name).single();
-    if (data) { playerData = data; return; }
-  } catch(e) {}
-  try {
-    const { data } = await sb.from('rm_players').insert({ name: currentPlayer.name, total_entries: 1 }).select().single();
-    playerData = data;
-  } catch(e) {
-    playerData = { name: currentPlayer.name, total_entries: 1 };
+  if (dbOk) {
+    try {
+      const { data } = await sb.from('rm_players').select('*').eq('name', currentPlayer.name).single();
+      if (data) { playerData = data; lsSetPlayer(currentPlayer.name, data); return; }
+    } catch(e) {}
+    try {
+      const { data } = await sb.from('rm_players').insert({ name: currentPlayer.name, total_entries: 1 }).select().single();
+      if (data) { playerData = data; lsSetPlayer(currentPlayer.name, data); return; }
+    } catch(e) {}
+  }
+  // Fallback to localStorage
+  const lsPlayers = lsGetPlayers();
+  if (lsPlayers[currentPlayer.name]) {
+    playerData = lsPlayers[currentPlayer.name];
+  } else {
+    playerData = { id: crypto.randomUUID(), name: currentPlayer.name, total_entries: 1 };
+    lsSetPlayer(currentPlayer.name, playerData);
   }
 }
 
 async function loadPlayerBrackets() {
-  try {
-    const { data } = await sb.from('rm_brackets').select('*').eq('player_name', currentPlayer.name).order('entry_number');
-    allBrackets = data || [];
-  } catch(e) { allBrackets = []; }
+  if (dbOk) {
+    try {
+      const { data } = await sb.from('rm_brackets').select('*').eq('player_name', currentPlayer.name).order('entry_number');
+      if (data && data.length > 0) {
+        allBrackets = data;
+        lsSet('brackets_' + currentPlayer.name, data);
+      } else {
+        allBrackets = [];
+      }
+    } catch(e) { allBrackets = []; }
+  }
+  // Fallback or merge with localStorage
+  if (allBrackets.length === 0) {
+    allBrackets = lsGet('brackets_' + currentPlayer.name) || [];
+  }
   if (allBrackets.length > 0) {
     currentBracket = allBrackets[0];
   } else {
-    currentBracket = null;
+    // Auto-create first entry so user can start picking immediately
+    await autoCreateFirstEntry();
   }
   updateEntryCount();
 }
 
-async function loadAllData() {
-  try {
-    const [pRes, bRes] = await Promise.all([
-      sb.from('rm_players').select('*').order('name'),
-      sb.from('rm_brackets').select('*').order('player_name,entry_number'),
-    ]);
-    allPlayerData = pRes.data || [];
-    allBracketsAll = bRes.data || [];
-  } catch(e) {
-    allPlayerData = [];
-    allBracketsAll = [];
+async function autoCreateFirstEntry() {
+  const entryNum = 1;
+  const newBracket = {
+    id: crypto.randomUUID(),
+    player_name: currentPlayer.name,
+    entry_number: entryNum,
+    picks: {},
+    score: 0,
+    submitted: false,
+    locked: false,
+  };
+  if (dbOk) {
+    try {
+      const { data } = await sb.from('rm_brackets').insert(newBracket).select().single();
+      if (data) { newBracket.id = data.id; }
+    } catch(e) { console.warn('DB insert failed, using local', e); }
   }
+  allBrackets = [newBracket];
+  currentBracket = newBracket;
+  lsSet('brackets_' + currentPlayer.name, allBrackets);
+  toast('Bracket #1 created — start picking!');
+}
+
+async function loadAllData() {
+  if (dbOk) {
+    try {
+      const [pRes, bRes] = await Promise.all([
+        sb.from('rm_players').select('*').order('name'),
+        sb.from('rm_brackets').select('*').order('player_name,entry_number'),
+      ]);
+      allPlayerData = pRes.data || [];
+      allBracketsAll = bRes.data || [];
+      return;
+    } catch(e) {}
+  }
+  // Fallback to localStorage
+  const lsPlayers = lsGetPlayers();
+  allPlayerData = Object.values(lsPlayers);
+  allBracketsAll = [];
+  PLAYERS.forEach(p => {
+    const brackets = lsGet('brackets_' + p.name) || [];
+    allBracketsAll.push(...brackets);
+  });
 }
 
 function updateEntryCount() {
@@ -503,31 +578,42 @@ async function createEntry() {
   const used = allBrackets.length;
   if (used >= total) { toast('No entries remaining — earn more through sales metrics!'); return; }
   const entryNum = used + 1;
-  try {
-    const { data } = await sb.from('rm_brackets').insert({
-      player_name: currentPlayer.name,
-      entry_number: entryNum,
-      picks: {},
-      score: 0,
-      submitted: false,
-      locked: false,
-    }).select().single();
-    allBrackets.push(data);
-    currentBracket = data;
-    renderEntryBar();
-    renderBracket();
-    toast(`Entry #${entryNum} created`);
-  } catch(e) {
-    toast('Failed to create entry');
+  const newBracket = {
+    id: crypto.randomUUID(),
+    player_name: currentPlayer.name,
+    entry_number: entryNum,
+    picks: {},
+    score: 0,
+    submitted: false,
+    locked: false,
+  };
+  if (dbOk) {
+    try {
+      const { data } = await sb.from('rm_brackets').insert(newBracket).select().single();
+      if (data) newBracket.id = data.id;
+    } catch(e) { console.warn('DB insert failed, using local'); }
   }
+  allBrackets.push(newBracket);
+  currentBracket = newBracket;
+  lsSet('brackets_' + currentPlayer.name, allBrackets);
+  renderEntryBar();
+  renderBracket();
+  toast(`Entry #${entryNum} created`);
   updateEntryCount();
 }
 
 async function savePicks() {
   if (!currentBracket) return;
-  try {
-    await sb.from('rm_brackets').update({ picks: currentBracket.picks }).eq('id', currentBracket.id);
-  } catch(e) { console.warn('save failed', e); }
+  // Always save to localStorage
+  const idx = allBrackets.findIndex(b => b.id === currentBracket.id);
+  if (idx >= 0) allBrackets[idx] = currentBracket;
+  lsSet('brackets_' + currentPlayer.name, allBrackets);
+  // Try DB
+  if (dbOk) {
+    try {
+      await sb.from('rm_brackets').update({ picks: currentBracket.picks }).eq('id', currentBracket.id);
+    } catch(e) { console.warn('DB save failed', e); }
+  }
 }
 
 async function submitEntry() {
@@ -539,12 +625,18 @@ async function submitEntry() {
     return;
   }
   currentBracket.submitted = true;
-  try {
-    await sb.from('rm_brackets').update({ submitted: true }).eq('id', currentBracket.id);
-    toast('Bracket locked in!');
-    renderEntryBar();
-    renderBracket();
-  } catch(e) { toast('Submit failed'); currentBracket.submitted = false; }
+  // Save locally
+  const idx = allBrackets.findIndex(b => b.id === currentBracket.id);
+  if (idx >= 0) allBrackets[idx] = currentBracket;
+  lsSet('brackets_' + currentPlayer.name, allBrackets);
+  if (dbOk) {
+    try {
+      await sb.from('rm_brackets').update({ submitted: true }).eq('id', currentBracket.id);
+    } catch(e) { console.warn('DB submit failed'); }
+  }
+  toast('Bracket locked in!');
+  renderEntryBar();
+  renderBracket();
 }
 
 function switchEntry() {
@@ -846,23 +938,32 @@ async function setEntries(name) {
   const input = document.getElementById(`admin-entries-${name.replace(/\s/g,'-')}`);
   const val = parseInt(input.value);
   if (isNaN(val) || val < 1) return;
-  try {
-    const { data: existing } = await sb.from('rm_players').select('*').eq('name', name).single();
-    if (existing) {
-      await sb.from('rm_players').update({ total_entries: val }).eq('id', existing.id);
-    } else {
-      await sb.from('rm_players').insert({ name, total_entries: val });
-    }
-    document.getElementById('admin-msg').textContent = `${name} → ${val} entries`;
-    if (currentPlayer && currentPlayer.name === name) {
-      playerData.total_entries = val;
-      updateEntryCount();
-      renderEntryBar();
-    }
-    setTimeout(() => openAdmin(), 500); // refresh
-  } catch(e) {
-    document.getElementById('admin-msg').textContent = 'Failed — check DB setup';
+
+  // Always update localStorage
+  const lsPlayers = lsGetPlayers();
+  const existing = lsPlayers[name] || { id: crypto.randomUUID(), name, total_entries: 1 };
+  existing.total_entries = val;
+  lsSetPlayer(name, existing);
+
+  // Try DB
+  if (dbOk) {
+    try {
+      const { data: dbRow } = await sb.from('rm_players').select('*').eq('name', name).single();
+      if (dbRow) {
+        await sb.from('rm_players').update({ total_entries: val }).eq('id', dbRow.id);
+      } else {
+        await sb.from('rm_players').insert({ name, total_entries: val });
+      }
+    } catch(e) { console.warn('DB setEntries failed', e); }
   }
+
+  document.getElementById('admin-msg').textContent = `${name} → ${val} entries ✓`;
+  if (currentPlayer && currentPlayer.name === name) {
+    playerData.total_entries = val;
+    updateEntryCount();
+    renderEntryBar();
+  }
+  setTimeout(() => openAdmin(), 500);
 }
 
 async function lockAllBrackets() {
